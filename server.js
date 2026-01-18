@@ -34,8 +34,8 @@ io.on('connection', (socket) => {
 });
 
 // Zoekt naar de poort van de provider, anders gebruikt hij 3000
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server draait op poort ${PORT}`);
-});
-//server.listen(3000, () => console.log('Server draait op http://localhost:3000'));
+//const PORT = process.env.PORT || 3000;
+//server.listen(PORT, '0.0.0.0', () => {
+//    console.log(`Server draait op poort ${PORT}`);
+//});
+server.listen(10000, () => console.log('Server draait op http://localhost:3000'));
