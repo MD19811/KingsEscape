@@ -1,18 +1,13 @@
 {
-  "name": "kings-crossing",
+  "name": "kings-escape",
   "version": "1.0.0",
+  "description": "Een schaakspel met ontsnappingsmechanisme",
   "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
     "express": "^4.18.2",
     "socket.io": "^4.7.2"
-  },
-  "description": "",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs"
+  }
 }
