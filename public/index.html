@@ -37,6 +37,15 @@
         @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
         .capture-anim { animation: shake 0.3s ease-in-out; }
         .fade-out { opacity: 0; transform: scale(0.5) rotate(20deg); transition: all 0.4s; }
+
+        /* Nieuwe stijlen */
+		.main-layout { display: flex; align-items: center; gap: 20px; }
+		.captured-box { width: 120px; height: 480px; background: #2a2a2a; border-radius: 8px; padding: 10px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 5px; border: 1px solid #444; }
+		.captured-box img { width: 30px; height: 30px; }
+		.last-move { background-color: rgba(255, 255, 0, 0.4) !important; }
+		#timer { font-family: monospace; font-size: 2rem; color: #ff4d4d; margin-bottom: 10px; }
+
+
     </style>
 </head>
 <body>
@@ -59,7 +68,14 @@
     #copyLinkBtn:hover { transform: scale(1.05); background: #917aff; }
 </style>
    <center><img src="logo.png"></center>
-    <div id="status">Verbinden met server...</div>
+   <div id="timer">02:00</div>
+   <div id="status">Verbinden met server...</div>
+
+   <div class="main-layout">
+       <div id="captured-black" class="captured-box"></div> <div class="board-container">
+           <div id="board" class="board"></div>
+       </div>
+    <div id="captured-white" class="captured-box"></div> </div>
 
     <div class="board-container">
         <div id="t-0-2" class="extra-sq" onclick="handleSelect('t-0-2')"></div>
@@ -70,6 +86,31 @@
     </div>
 
     <script>
+    let timeLeft = 120;
+	let timerInterval;
+
+	function startTimer() {
+	    clearInterval(timerInterval);
+	    timeLeft = 120;
+	    updateTimerDisplay();
+	    timerInterval = setInterval(() => {
+	        if (!gameActive) return;
+	        timeLeft--;
+	        updateTimerDisplay();
+	        if (timeLeft <= 0) {
+	            clearInterval(timerInterval);
+	            if (turn === myColor) socket.emit('timeOut', { room, color: myColor });
+	        }
+	    }, 1000);
+	}
+
+	function updateTimerDisplay() {
+	    const mins = Math.floor(timeLeft / 60);
+	    const secs = timeLeft % 60;
+	    document.getElementById('timer').innerText = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+}
+
+
         //const socket = io();
         const socket = io(window.location.origin);
 
@@ -206,26 +247,68 @@
         function hasPiece(id) { let el = document.getElementById(id); return el && el.innerHTML !== ''; }
         function isOwnPieceAt(id) { let el = document.getElementById(id); return el && el.querySelector('img') && isOwn(el.querySelector('img').dataset.piece); }
 
-        function applyMove(f, t, p) {
-            const fromEl = document.getElementById(f);
-            const toEl = document.getElementById(t);
+        // Update de applyMove functie
+		function applyMove(f, t, p, isRemote = false) {
+		    const fromEl = document.getElementById(f);
+		    const toEl = document.getElementById(t);
+		    let capturedPiece = null;
 
-            // Slaan-animatie
-            if(toEl.innerHTML !== '') {
-                toEl.classList.add('capture-anim');
-                const oldImg = toEl.querySelector('img');
-                oldImg.classList.add('fade-out');
-                setTimeout(() => toEl.classList.remove('capture-anim'), 300);
-            }
+		    if(toEl.innerHTML !== '') {
+		        capturedPiece = toEl.querySelector('img').dataset.piece;
+		        addCapturedPiece(capturedPiece);
+		    }
 
-            toEl.innerHTML = `<img src="${imgs[p]}" data-piece="${p}">`;
-            fromEl.innerHTML = '';
+		    // Markeer laatste zet
+		    document.querySelectorAll('.sq').forEach(s => s.classList.remove('last-move'));
+		    fromEl.classList.add('last-move');
+		    toEl.classList.add('last-move');
 
-            turn = turn === 'white' ? 'black' : 'white';
-            clearHighlights();
-            checkCheckStatus();
-            updateUI();
-        }
+		    toEl.innerHTML = `<img src="${imgs[p]}" data-piece="${p}">`;
+		    fromEl.innerHTML = '';
+
+		    turn = turn === 'white' ? 'black' : 'white';
+		    startTimer(); // Reset timer bij elke zet
+		    clearHighlights();
+		    updateUI();
+
+		    // Sla status op server op
+		    if (!isRemote) {
+		        socket.emit('updateBoard', { room, board: getBoardState() });
+		    }
+		}
+
+		function addCapturedPiece(p) {
+		    const color = p === p.toUpperCase() ? 'black' : 'white'; // Als wit stuk (hoofdletter) wordt geslagen, gaat het naar de zwarte kant
+		    const container = document.getElementById(`captured-${color}`);
+		    const img = document.createElement('img');
+		    img.src = imgs[p];
+		    container.appendChild(img);
+		}
+
+		function getBoardState() {
+		    const state = {};
+		    document.querySelectorAll('.sq').forEach(sq => {
+		        const img = sq.querySelector('img');
+		        if (img) state[sq.id] = img.dataset.piece;
+		    });
+		    return state;
+		}
+
+		// Luister naar herstel-data van de server
+		socket.on('syncState', (state) => {
+		    // Herstel bord
+		    Object.keys(state.board).forEach(id => {
+		        const p = state.board[id];
+		        document.getElementById(id).innerHTML = `<img src="${imgs[p]}" data-piece="${p}">`;
+		    });
+		    // Herstel geslagen stukken
+		    state.captured.white.forEach(p => addCapturedPiece(p));
+		    state.captured.black.forEach(p => addCapturedPiece(p));
+		    turn = state.turn;
+		    gameActive = true;
+		    startTimer();
+		    updateUI();
+});
 
         function checkCheckStatus() {
             document.querySelectorAll('.sq').forEach(s => s.classList.remove('in-check'));
