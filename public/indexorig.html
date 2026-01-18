@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <title>King's Escape</title>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root { --light: #f0d9b5; --dark: #b58863; --win: #4CAF50; }
+        body { background: #222; color: white; display: flex; flex-direction: column; align-items: center; font-family: sans-serif; }
+        .board-container { position: relative; padding: 80px; background: #333; border-radius: 8px; margin-top: 20px; }
+        .board { display: grid; grid-template-columns: repeat(8, 60px); grid-template-rows: repeat(8, 60px); border: 3px solid #000; }
+        .sq { width: 60px; height: 60px; display: flex; justify-content: center; align-items: center; cursor: pointer; position: relative; }
+        .sq img { width: 85%; height: 85%; pointer-events: none; }
+        .light { background-color: var(--light); }
+        .dark { background-color: var(--dark); }
+
+        .extra-sq { position: absolute; width: 54px; height: 54px; border: 3px dashed gold; display: flex; justify-content: center; align-items: center; cursor: pointer; }
+        #t-0-2 { top: 24px; left: 203px; background: var(--dark); }
+        #t-0-5 { top: 24px; left: 383px; background: var(--light); }
+        #b-7-2 { bottom: 23px; left: 203px; background: var(--light); }
+        #b-7-5 { bottom: 23px; left: 383px; background: var(--dark); }
+
+        .selected { background-color: #7b61ff !important; }
+        .possible::after { content: ''; position: absolute; width: 18px; height: 18px; background: rgba(0,0,0,0.25); border-radius: 50%; z-index: 10; }
+        #status { font-size: 1.2rem; margin: 20px; padding: 10px; background: #444; border-radius: 5px; min-width: 300px; text-align: center; }
+    </style>
+</head>
+<body>
+    <center><img src="logo.png"></center>
+    <div id="status">Verbinden...</div>
+
+    <div class="board-container">
+        <div id="t-0-2" class="extra-sq" onclick="handleSelect('t-0-2')"></div>
+        <div id="t-0-5" class="extra-sq" onclick="handleSelect('t-0-5')"></div>
+        <div id="board" class="board"></div>
+        <div id="b-7-2" class="extra-sq" onclick="handleSelect('b-7-2')"></div>
+        <div id="b-7-5" class="extra-sq" onclick="handleSelect('b-7-5')"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        let myColor, turn = 'white', selectedId = null, gameActive = false;
+        const room = prompt("Kamer naam:", "schaak-room");
+
+        const escapeSound = new Audio("/sounds/escape.mp3");
+		escapeSound.volume = 0.6;
+
+
+        const imgs = {
+            'p': 'https://upload.wikimedia.org/wikipedia/commons/c/c7/Chess_pdt45.svg',
+            'r': 'https://upload.wikimedia.org/wikipedia/commons/f/ff/Chess_rdt45.svg',
+            'n': 'https://upload.wikimedia.org/wikipedia/commons/e/ef/Chess_ndt45.svg',
+            'b': 'https://upload.wikimedia.org/wikipedia/commons/9/98/Chess_bdt45.svg',
+            'q': 'https://upload.wikimedia.org/wikipedia/commons/4/47/Chess_qdt45.svg',
+            'k': 'https://upload.wikimedia.org/wikipedia/commons/f/f0/Chess_kdt45.svg',
+            'P': 'https://upload.wikimedia.org/wikipedia/commons/4/45/Chess_plt45.svg',
+            'R': 'https://upload.wikimedia.org/wikipedia/commons/7/72/Chess_rlt45.svg',
+            'N': 'https://upload.wikimedia.org/wikipedia/commons/7/70/Chess_nlt45.svg',
+            'B': 'https://upload.wikimedia.org/wikipedia/commons/b/b1/Chess_blt45.svg',
+            'Q': 'https://upload.wikimedia.org/wikipedia/commons/1/15/Chess_qlt45.svg',
+            'K': 'https://upload.wikimedia.org/wikipedia/commons/4/42/Chess_klt45.svg'
+        };
+
+        const setup = {
+            '0-0':'r','0-1':'n','0-2':'b','0-3':'q','0-4':'k','0-5':'b','0-6':'n','0-7':'r',
+            '1-0':'p','1-1':'p','1-2':'p','1-3':'p','1-4':'p','1-5':'p','1-6':'p','1-7':'p',
+            '6-0':'P','6-1':'P','6-2':'P','6-3':'P','6-4':'P','6-5':'P','6-6':'P','6-7':'P',
+            '7-0':'R','7-1':'N','7-2':'B','7-3':'Q','7-4':'K','7-5':'B','7-6':'N','7-7':'R'
+        };
+
+        function init() {
+            const board = document.getElementById('board');
+            for(let r=0; r<8; r++) {
+                for(let c=0; c<8; c++) {
+                    const s = document.createElement('div');
+                    s.className = `sq ${(r+c)%2===0?'light':'dark'}`;
+                    s.id = `${r}-${c}`;
+                    if(setup[s.id]) s.innerHTML = `<img src="${imgs[setup[s.id]]}" data-piece="${setup[s.id]}">`;
+                    s.onclick = () => handleSelect(s.id);
+                    board.appendChild(s);
+                }
+            }
+        }
+
+        socket.emit('joinGame', room);
+        socket.on('playerColor', c => { myColor = c; document.getElementById('status').innerText = `Jij bent ${c}. Wachten op tegenstander...`; });
+        socket.on('startGame', () => { gameActive = true; updateUI(); });
+        socket.on('moveMade', d => applyMove(d.from, d.to, d.piece));
+
+        function handleSelect(id) {
+            if(!gameActive || turn !== myColor) return;
+            const el = document.getElementById(id);
+
+            if(selectedId && el.classList.contains('possible')) {
+                const movingPiece = document.getElementById(selectedId).querySelector('img').dataset.piece;
+                socket.emit('makeMove', { room, from: selectedId, to: id, piece: movingPiece });
+                applyMove(selectedId, id, movingPiece);
+                checkWin(id, movingPiece);
+            } else {
+                clearHighlights();
+                const img = el.querySelector('img');
+                if(img && isOwn(img.dataset.piece)) {
+                    selectedId = id;
+                    el.classList.add('selected');
+                    showValidMoves(id, img.dataset.piece);
+                }
+            }
+        }
+
+        function isOwn(p) { return myColor === 'white' ? p === p.toUpperCase() : p === p.toLowerCase(); }
+
+        function showValidMoves(id, p) {
+            const [r, c] = id.split('-').map(Number);
+            const dirs = {
+                'R': [[1,0],[-1,0],[0,1],[0,-1]],
+                'B': [[1,1],[1,-1],[-1,1],[-1,-1]],
+                'N': [[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]]
+            };
+
+            const type = p.toUpperCase();
+            if(type === 'R') slide(r, c, dirs.R);
+            if(type === 'B') slide(r, c, dirs.B);
+            if(type === 'Q') slide(r, c, [...dirs.R, ...dirs.B]);
+            if(type === 'N') dirs.N.forEach(m => step(r+m[0], c+m[1]));
+            if(type === 'K') {
+                [...dirs.R, ...dirs.B].forEach(m => step(r+m[0], c+m[1]));
+                if(myColor === 'white' && r === 0) { if(c === 2) highlight('t-0-2'); if(c === 5) highlight('t-0-5'); }
+                if(myColor === 'black' && r === 7) { if(c === 2) highlight('b-7-2'); if(c === 5) highlight('b-7-5'); }
+            }
+            if(type === 'P') {
+                let d = (p === 'P') ? -1 : 1;
+                let start = (p === 'P') ? 6 : 1;
+                if(!hasPiece(`${r+d}-${c}`)) {
+                    highlight(`${r+d}-${c}`);
+                    if(r === start && !hasPiece(`${r+2*d}-${c}`)) highlight(`${r+2*d}-${c}`);
+                }
+                [1,-1].forEach(side => {
+                    let tid = `${r+d}-${c+side}`;
+                    if(hasPiece(tid) && !isOwnPieceAt(tid)) highlight(tid);
+                });
+            }
+        }
+
+        function slide(r, c, dirs) {
+            dirs.forEach(d => {
+                let nr=r+d[0], nc=c+d[1];
+                while(nr>=0 && nr<8 && nc>=0 && nc<8) {
+                    let tid = `${nr}-${nc}`;
+                    if(!hasPiece(tid)) { highlight(tid); }
+                    else { if(!isOwnPieceAt(tid)) highlight(tid); break; }
+                    nr+=d[0]; nc+=d[1];
+                }
+            });
+        }
+
+        function step(r, c) {
+            if(r>=0 && r<8 && c>=0 && c<8) {
+                let tid = `${r}-${c}`;
+                if(!hasPiece(tid) || !isOwnPieceAt(tid)) highlight(tid);
+            }
+        }
+
+        function highlight(id) { if(document.getElementById(id)) document.getElementById(id).classList.add('possible'); }
+        function hasPiece(id) { let el = document.getElementById(id); return el && el.innerHTML !== ''; }
+        function isOwnPieceAt(id) { let el = document.getElementById(id); if(!el || !el.querySelector('img')) return false; return isOwn(el.querySelector('img').dataset.piece); }
+
+        function applyMove(f, t, p) {
+            document.getElementById(f).innerHTML = '';
+            document.getElementById(t).innerHTML = `<img src="${imgs[p]}" data-piece="${p}">`;
+            turn = turn === 'white' ? 'black' : 'white';
+            clearHighlights();
+            updateUI();
+        }
+
+        function checkWin(id, p) {
+            if((p === 'K' && id.startsWith('t')) || (p === 'k' && id.startsWith('b'))) {
+                document.getElementById('status').innerText = "GEWONNEN!";
+                escapeSound.currentTime = 0;
+       		    escapeSound.play();
+                gameActive = false;
+            }
+        }
+
+        function clearHighlights() { document.querySelectorAll('.sq, .extra-sq').forEach(s => s.classList.remove('selected', 'possible')); selectedId = null; }
+        function updateUI() { document.getElementById('status').innerText = turn === myColor ? "Jouw beurt!" : "Wachten..."; }
+
+        init();
+    </script>
+</body>
+</html>
