@@ -74,7 +74,7 @@
         const socket = io(window.location.origin);
 
         let myColor, turn = 'white', selectedId = null, gameActive = false;
-        const room = prompt("Voer kamernaam in:", "game-1");
+
 
         // Zoek of er al een kamer in de URL staat, anders vraag erom
 		const urlParams = new URLSearchParams(window.location.search);
