@@ -70,7 +70,9 @@
     </div>
 
     <script>
-        const socket = io();
+        //const socket = io();
+        const socket = io(window.location.origin);
+
         let myColor, turn = 'white', selectedId = null, gameActive = false;
         const room = prompt("Voer kamernaam in:", "game-1");
 
