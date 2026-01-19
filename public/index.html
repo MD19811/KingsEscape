@@ -68,7 +68,7 @@
     #copyLinkBtn:hover { transform: scale(1.05); background: #917aff; }
 </style>
    <center><img src="logo.png"></center>
-   <div id="timer">02:00</div>
+   <div id="timer">00:30</div>
    <div id="status">Verbinden met server...</div>
 
    <div class="main-layout">
@@ -86,12 +86,12 @@
 
 
     <script>
-    let timeLeft = 120;
+    let timeLeft = 30;
 	let timerInterval;
 
 	function startTimer() {
 	    clearInterval(timerInterval);
-	    timeLeft = 120;
+	    timeLeft = 30;
 	    updateTimerDisplay();
 	    timerInterval = setInterval(() => {
 	        if (!gameActive) return;
